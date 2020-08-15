@@ -3,14 +3,37 @@ const fs = require("fs");
 const app = express();
 const bodyParser = require("body-parser");
 const cors = require("cors");
+const multer = require("multer");
+const path = require("path");
+const helpers = require("./helpers");
+
+const imageDir = "images";
 
 app.use(bodyParser.json());
 
+app.use(express.json());
+
 app.use(cors());
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, `${imageDir}/`);
+  },
+
+  // By default, multer removes file extensions so let's add them back
+  filename: function (req, file, cb) {
+    cb(null, file.fieldname + Date.now() + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({
+  dest: `${imageDir}/`,
+  storage: storage,
+  fileFilter: helpers.imageFilter,
+}).single("image");
 
 // search string in product's title
 app.get("/products", (req, res) => {
-  console.log("QUERY:", req.query);
   const search = req.query.search;
   fs.readFile("products.json", (err, data) => {
     const products = JSON.parse(data);
@@ -35,26 +58,64 @@ app.get("/products/:id", (req, res) => {
   });
 });
 
+// // add new product
+// app.post("/products", (req, res) => {
+//   fs.readFile("products.json", (err, data) => {
+//     const products = JSON.parse(data);
+//     const title = req.body.title;
+//     const image = req.body.image;
+//     const quantity = req.body.quantity;
+//     const price = req.body.price;
+//     const description = req.body.description;
+//     products.push({
+//       id: products.length + 1,
+//       title: title,
+//       image: image,
+//       quantity: quantity,
+//       price: price,
+//       description: description,
+//     });
+//     fs.writeFile("products.json", JSON.stringify(products), (err) => {
+//       // console.log(err);
+//       res.send("YOU SUCCEED!!!");
+//     });
+//   });
+// });
+
 // add new product
 app.post("/products", (req, res) => {
-  fs.readFile("products.json", (err, data) => {
-    const products = JSON.parse(data);
-    const title = req.body.title;
-    const image = req.body.image;
-    const quantity = req.body.quantity;
-    const price = req.body.price;
-    const description = req.body.description;
-    products.push({
-      id: products.length + 1,
-      title: title,
-      image: image,
-      quantity: quantity,
-      price: price,
-      description: description,
-    });
-    fs.writeFile("products.json", JSON.stringify(products), (err) => {
-      // console.log(err);
-      res.send("YOU SUCCEED!!!");
+  var dir = imageDir;
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir);
+  }
+
+  upload(req, res, (err) => {
+    if (err) {
+      res.status(400).send("Something went wrong!");
+    }
+
+    const imgFileName = `${imageDir}/${req.file.filename}`;
+
+    fs.readFile("products.json", (err, data) => {
+      const products = JSON.parse(data);
+      const title = req.body.title;
+      const image = imgFileName;
+      const quantity = req.body.quantity;
+      const price = req.body.price;
+      const description = req.body.description;
+      products.push({
+        id: Math.max(...products.map((p) => p.id)) + 1,
+        title: title,
+        image: image,
+        quantity: quantity,
+        price: price,
+        description: description,
+      });
+
+      fs.writeFile("products.json", JSON.stringify(products), (err) => {
+        // console.log(err);
+        res.send("YOU SUCCEED!!!");
+      });
     });
   });
 });
