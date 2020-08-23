@@ -6,7 +6,6 @@ const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
 const helpers = require("./helpers");
-
 const imageDir = "images";
 
 app.use(bodyParser.json());
@@ -14,6 +13,8 @@ app.use(bodyParser.json());
 app.use(express.json());
 
 app.use(cors());
+
+app.use("/images", express.static("images"));
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -59,7 +60,7 @@ app.get("/products/:id", (req, res) => {
 });
 
 // // add new product
-// app.post("/products", (req, res) => {
+// app.post("/productsO", (req, res) => {
 //   fs.readFile("products.json", (err, data) => {
 //     const products = JSON.parse(data);
 //     const title = req.body.title;
@@ -82,7 +83,7 @@ app.get("/products/:id", (req, res) => {
 //   });
 // });
 
-// add new product
+// add new product + upload image
 app.post("/products", (req, res) => {
   var dir = imageDir;
   if (!fs.existsSync(dir)) {
@@ -113,21 +114,34 @@ app.post("/products", (req, res) => {
       });
 
       fs.writeFile("products.json", JSON.stringify(products), (err) => {
-        // console.log(err);
         res.send("YOU SUCCEED!!!");
       });
     });
   });
 });
 
-//delete product by id
+//delete product by id + deete server image
 app.delete("/products/:id", (req, res) => {
+  console.log("delete method");
   fs.readFile("products.json", (err, data) => {
     const products = JSON.parse(data);
     const productId = +req.params.id;
     const productIndex = products.findIndex(
       (product) => product.id === productId
     );
+
+    const imgFileName = products[productIndex].image;
+
+    //delete image file
+    console.log(`deleting local image (${imgFileName})`);
+    fs.unlink(imgFileName, (err) => {
+      if (err) {
+        console.log(`failed to delete local image:${err}`);
+      } else {
+        console.log(`successfully deleted local image`);
+      }
+    });
+
     products.splice(productIndex, 1);
     fs.writeFile("products.json", JSON.stringify(products), (err) => {
       res.send("YOU SUCCEED!!!");
@@ -137,22 +151,45 @@ app.delete("/products/:id", (req, res) => {
 
 //update product attributes
 app.put("/products/:id", (req, res) => {
-  fs.readFile("products.json", (err, data) => {
-    const products = JSON.parse(data);
-    const productId = +req.params.id;
-    const productIndex = products.findIndex(
-      (product) => product.id === productId
-    );
+  upload(req, res, (err) => {
+    if (err) {
+      res.status(400).send("Something went wrong!");
+    }
+    fs.readFile("products.json", (err, data) => {
+      const products = JSON.parse(data);
+      const productId = +req.params.id;
+      // console.log("req.body", req.body);
 
-    if (req.body.title) products[productIndex].title = req.body.title;
-    if (req.body.price) products[productIndex].price = req.body.price;
-    if (req.body.image) products[productIndex].image = req.body.image;
-    if (req.body.quantity) products[productIndex].quantity = req.body.quantity;
-    if (req.body.description)
-      products[productIndex].description = req.body.description;
+      // console.log("req.body.image", req.body.image);
+      console.log("productId", productId);
+      const productIndex = products.findIndex(
+        (product) => product.id === productId
+      );
+      console.log("productIndex", productIndex);
 
-    fs.writeFile("products.json", JSON.stringify(products), (err) => {
-      res.send("update commited!!!");
+      if (req.file) {
+        fs.unlink(products[productIndex].image, (err) => {
+          if (err) {
+            console.log(`failed to delete local image:${err}`);
+          } else {
+            console.log(`successfully deleted local image`);
+          }
+        });
+
+        products[productIndex].image = `${imageDir}/${req.file.filename}`;
+      }
+
+      if (req.body.title) products[productIndex].title = req.body.title;
+      if (req.body.price) products[productIndex].price = req.body.price;
+
+      if (req.body.quantity)
+        products[productIndex].quantity = req.body.quantity;
+      if (req.body.description)
+        products[productIndex].description = req.body.description;
+
+      fs.writeFile("products.json", JSON.stringify(products), (err) => {
+        res.send("update commited!!!");
+      });
     });
   });
 });
