@@ -7,6 +7,7 @@ const multer = require("multer");
 const path = require("path");
 const helpers = require("./helpers");
 const imageDir = "images";
+const noImage = "images/NoImage.png";
 
 app.use(bodyParser.json());
 
@@ -59,32 +60,9 @@ app.get("/products/:id", (req, res) => {
   });
 });
 
-// // add new product
-// app.post("/productsO", (req, res) => {
-//   fs.readFile("products.json", (err, data) => {
-//     const products = JSON.parse(data);
-//     const title = req.body.title;
-//     const image = req.body.image;
-//     const quantity = req.body.quantity;
-//     const price = req.body.price;
-//     const description = req.body.description;
-//     products.push({
-//       id: products.length + 1,
-//       title: title,
-//       image: image,
-//       quantity: quantity,
-//       price: price,
-//       description: description,
-//     });
-//     fs.writeFile("products.json", JSON.stringify(products), (err) => {
-//       // console.log(err);
-//       res.send("YOU SUCCEED!!!");
-//     });
-//   });
-// });
-
 // add new product + upload image
 app.post("/products", (req, res) => {
+  console.log("add new product");
   var dir = imageDir;
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir);
@@ -95,14 +73,20 @@ app.post("/products", (req, res) => {
       res.status(400).send("Something went wrong!");
     }
 
-    const imgFileName = `${imageDir}/${req.file.filename}`;
+    let imgFileName;
 
+    if (req.file) {
+      imgFileName = `${imageDir}/${req.file.filename}`;
+    } else {
+      imgFileName = noImage;
+    }
+    console.log("imgFileName", imgFileName);
     fs.readFile("products.json", (err, data) => {
       const products = JSON.parse(data);
       const title = req.body.title;
       const image = imgFileName;
-      const quantity = req.body.quantity;
-      const price = req.body.price;
+      const quantity = +req.body.quantity;
+      const price = +req.body.price;
       const description = req.body.description;
       products.push({
         id: Math.max(...products.map((p) => p.id)) + 1,
@@ -120,7 +104,7 @@ app.post("/products", (req, res) => {
   });
 });
 
-//delete product by id + deete server image
+//delete product by id + delete server image
 app.delete("/products/:id", (req, res) => {
   console.log("delete method");
   fs.readFile("products.json", (err, data) => {
@@ -134,13 +118,15 @@ app.delete("/products/:id", (req, res) => {
 
     //delete image file
     console.log(`deleting local image (${imgFileName})`);
-    fs.unlink(imgFileName, (err) => {
-      if (err) {
-        console.log(`failed to delete local image:${err}`);
-      } else {
-        console.log(`successfully deleted local image`);
-      }
-    });
+    if (!imgFileName.endsWith(noImage)) {
+      fs.unlink(imgFileName, (err) => {
+        if (err) {
+          console.log(`failed to delete local image:${err}`);
+        } else {
+          console.log(`successfully deleted local image`);
+        }
+      });
+    }
 
     products.splice(productIndex, 1);
     fs.writeFile("products.json", JSON.stringify(products), (err) => {
@@ -168,22 +154,23 @@ app.put("/products/:id", (req, res) => {
       console.log("productIndex", productIndex);
 
       if (req.file) {
-        fs.unlink(products[productIndex].image, (err) => {
-          if (err) {
-            console.log(`failed to delete local image:${err}`);
-          } else {
-            console.log(`successfully deleted local image`);
-          }
-        });
-
+        if (!products[productIndex].image.endsWith(noImage)) {
+          fs.unlink(products[productIndex].image, (err) => {
+            if (err) {
+              console.log(`failed to delete local image:${err}`);
+            } else {
+              console.log(`successfully deleted local image`);
+            }
+          });
+        }
         products[productIndex].image = `${imageDir}/${req.file.filename}`;
       }
 
       if (req.body.title) products[productIndex].title = req.body.title;
-      if (req.body.price) products[productIndex].price = req.body.price;
+      if (req.body.price) products[productIndex].price = +req.body.price;
 
       if (req.body.quantity)
-        products[productIndex].quantity = req.body.quantity;
+        products[productIndex].quantity = +req.body.quantity;
       if (req.body.description)
         products[productIndex].description = req.body.description;
 
@@ -192,6 +179,22 @@ app.put("/products/:id", (req, res) => {
       });
     });
   });
+});
+
+app.post("/Login", (req, res) => {
+  console.log(req.body);
+  const { Email, Password } = req.body;
+  console.log(Email, Password);
+  console.log("process.env.Admin_Email", process.env.Admin_Email);
+  console.log("process.env.Admin_Password", process.env.Admin_Password);
+  if (
+    Email === process.env.Admin_Email &&
+    Password === process.env.Admin_Password
+  ) {
+    res.status(200).send("OK");
+  } else {
+    res.status(200).send("Unauthorized");
+  }
 });
 
 app.listen(8000, () => {
