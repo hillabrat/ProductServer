@@ -8,6 +8,10 @@ const path = require("path");
 const helpers = require("./helpers");
 const imageDir = "images";
 const noImage = "images/NoImage.png";
+const http = require("http");
+const socketIo = require("socket.io");
+const server = http.createServer(app);
+const io = socketIo(server);
 
 app.use(bodyParser.json());
 
@@ -121,6 +125,26 @@ app.post("/products", (req, res) => {
   });
 });
 
+//update product quantity
+app.put("/products/updateQuantity/:id", (req, res) => {
+  fs.readFile("products.json", (err, data) => {
+    const products = JSON.parse(data);
+    const productId = +req.params.id;
+
+    const productIndex = products.findIndex(
+      (product) => product.id === productId
+    );
+
+    if (req.body.quantity) products[productIndex].quantity = +req.body.quantity;
+
+    fs.writeFile("products.json", JSON.stringify(products), (err) => {
+      res.send("Update product quantity method completed");
+    });
+
+    io.emit("FromAPI", products[productIndex]);
+  });
+});
+
 //delete product by id + delete server image
 app.delete("/products/:id", (req, res) => {
   fs.readFile("products.json", (err, data) => {
@@ -211,6 +235,10 @@ app.post("/Login", (req, res) => {
   }
 });
 
-app.listen(8000, () => {
-  console.log("Example app listening on port 8000!");
+// app.listen(8000, () => {
+//   console.log("Example app listening on port 8000!");
+// });
+
+server.listen(8000, () => {
+  console.log(`Example app listening on port 8000!`);
 });
