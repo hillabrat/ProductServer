@@ -131,17 +131,24 @@ app.put("/products/updateQuantity/:id", (req, res) => {
     const products = JSON.parse(data);
     const productId = +req.params.id;
 
-    const productIndex = products.findIndex(
-      (product) => product.id === productId
-    );
+    const productInfo = products.find((product) => product.id === productId);
 
-    if (req.body.quantity) products[productIndex].quantity = +req.body.quantity;
+    if (productInfo) {
+      if (req.body.quantity) productInfo.quantity = +req.body.quantity;
 
-    fs.writeFile("products.json", JSON.stringify(products), (err) => {
-      res.send("Update product quantity method completed");
-    });
+      fs.writeFile("products.json", JSON.stringify(products), (err) => {
+        res.send("Update product quantity method completed");
+      });
 
-    io.emit("FromAPI", products[productIndex]);
+      io.emit(
+        "getProductQuantityToUpdate",
+        productInfo.id,
+        productInfo.quantity
+      );
+    } else
+      res.send(
+        `Update product quantity method FAILED - product id ${productId} not found!`
+      );
   });
 });
 
