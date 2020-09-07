@@ -12,6 +12,17 @@ const http = require("http");
 const socketIo = require("socket.io");
 const server = http.createServer(app);
 const io = socketIo(server);
+const mongoose = require("mongoose");
+mongoose.set("debug", true);
+
+const productsSchema = new mongoose.Schema({
+  _id: Number,
+  title: String,
+  image: String,
+  quantity: Number,
+  price: Number,
+  description: String,
+});
 
 app.use(bodyParser.json());
 
@@ -38,193 +49,13 @@ const upload = multer({
   fileFilter: helpers.imageFilter,
 }).single("image");
 
-// search string in product's title
-app.get("/products", (req, res) => {
-  const search = req.query.search;
-  fs.readFile("products.json", (err, data) => {
-    const products = JSON.parse(data);
-
-    //delete unused images
-    let files = fs.readdirSync(imageDir);
-
-    files.forEach(function (file, index) {
-      if (
-        !noImage.endsWith(file) &&
-        products.findIndex((p) => p.image.endsWith(file)) === -1
-      )
-        fs.unlink(`${imageDir}/${file}`, (err) => {
-          if (err) {
-            console.log(`failed to delete local image:${err}`);
-          }
-        });
-      //   console.log("should delete img file", file);
-      // else console.log("DO NOT delete img file", file);
-    });
-
-    if (search) {
-      const filteredProducts = products.filter((product) =>
-        product.title.toLowerCase().includes(search.toLowerCase())
-      );
-      res.send(filteredProducts);
-    } else {
-      res.send(products);
-    }
+function connectToDB() {
+  return mongoose.connect("mongodb://localhost/shopDB", {
+    useNewUrlParser: true,
+    useCreateIndex: true,
+    useUnifiedTopology: true,
   });
-});
-
-//get product by id
-app.get("/products/:id", (req, res) => {
-  fs.readFile("products.json", (err, data) => {
-    const products = JSON.parse(data);
-    const productId = +req.params.id;
-    const productInfo = products.find((product) => product.id === productId);
-    res.send(productInfo);
-  });
-});
-
-// add new product + upload image
-app.post("/products", (req, res) => {
-  var dir = imageDir;
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir);
-  }
-
-  upload(req, res, (err) => {
-    if (err) {
-      res.status(400).send("Something went wrong!");
-    }
-
-    let imgFileName;
-
-    if (req.file) {
-      imgFileName = `${imageDir}/${req.file.filename}`;
-    } else {
-      imgFileName = noImage;
-    }
-
-    fs.readFile("products.json", (err, data) => {
-      const products = JSON.parse(data);
-      const title = req.body.title;
-      const image = imgFileName;
-      const quantity = +req.body.quantity;
-      const price = +req.body.price;
-      const description = req.body.description;
-      products.push({
-        id: Math.max(...products.map((p) => p.id)) + 1,
-        title: title,
-        image: image,
-        quantity: quantity,
-        price: price,
-        description: description,
-      });
-
-      fs.writeFile("products.json", JSON.stringify(products), (err) => {
-        res.send("Add product method completed");
-      });
-    });
-  });
-});
-
-//update product quantity
-app.put("/products/updateQuantity/:id", (req, res) => {
-  fs.readFile("products.json", (err, data) => {
-    const products = JSON.parse(data);
-    const productId = +req.params.id;
-
-    const productInfo = products.find((product) => product.id === productId);
-
-    if (productInfo) {
-      if (req.body.quantity) productInfo.quantity = +req.body.quantity;
-
-      fs.writeFile("products.json", JSON.stringify(products), (err) => {
-        res.send("Update product quantity method completed");
-      });
-
-      io.emit(
-        "getProductQuantityToUpdate",
-        productInfo.id,
-        productInfo.quantity
-      );
-    } else
-      res.send(
-        `Update product quantity method FAILED - product id ${productId} not found!`
-      );
-  });
-});
-
-//delete product by id + delete server image
-app.delete("/products/:id", (req, res) => {
-  fs.readFile("products.json", (err, data) => {
-    const products = JSON.parse(data);
-    const productId = +req.params.id;
-    const productIndex = products.findIndex(
-      (product) => product.id === productId
-    );
-
-    const imgFileName = products[productIndex].image;
-
-    //delete image file
-    console.log(`deleting local image (${imgFileName})`);
-    if (!imgFileName.endsWith(noImage)) {
-      fs.unlink(imgFileName, (err) => {
-        if (err) {
-          console.log(`failed to delete local image:${err}`);
-        }
-        //else {
-        //   console.log(`successfully deleted local image`);
-        // }
-      });
-    }
-
-    products.splice(productIndex, 1);
-    fs.writeFile("products.json", JSON.stringify(products), (err) => {
-      res.send("Delete product method completed");
-    });
-  });
-});
-
-//update product
-app.put("/products/:id", (req, res) => {
-  upload(req, res, (err) => {
-    if (err) {
-      res.status(400).send("Something went wrong!");
-    }
-    fs.readFile("products.json", (err, data) => {
-      const products = JSON.parse(data);
-      const productId = +req.params.id;
-
-      const productIndex = products.findIndex(
-        (product) => product.id === productId
-      );
-
-      if (req.file) {
-        if (!products[productIndex].image.endsWith(noImage)) {
-          fs.unlink(products[productIndex].image, (err) => {
-            if (err) {
-              console.log(`failed to delete local image:${err}`);
-            }
-            //else {
-            //   console.log(`successfully deleted local image`);
-            // }
-          });
-        }
-        products[productIndex].image = `${imageDir}/${req.file.filename}`;
-      }
-
-      if (req.body.title) products[productIndex].title = req.body.title;
-      if (req.body.price) products[productIndex].price = +req.body.price;
-
-      if (req.body.quantity)
-        products[productIndex].quantity = +req.body.quantity;
-      if (req.body.description)
-        products[productIndex].description = req.body.description;
-
-      fs.writeFile("products.json", JSON.stringify(products), (err) => {
-        res.send("Update product method completed");
-      });
-    });
-  });
-});
+}
 
 app.post("/Login", (req, res) => {
   console.log(req.body);
@@ -242,10 +73,186 @@ app.post("/Login", (req, res) => {
   }
 });
 
-// app.listen(8000, () => {
-//   console.log("Example app listening on port 8000!");
-// });
+connectToDB().then(async () => {
+  server.listen(8000, () => {
+    console.log(`Example app listening on port 8000!`);
+  });
 
-server.listen(8000, () => {
-  console.log(`Example app listening on port 8000!`);
+  app.get("/products", (req, res) => {
+    const prods = mongoose.model("products", productsSchema);
+    const search = req.query.search;
+    let productList;
+    console.log("search", search);
+    prods.find({ title: { $regex: search, $options: "i" } }, function (
+      err,
+      productList
+    ) {
+      if (err) return console.error(err);
+      console.log("productList", productList);
+      res.send(productList);
+    });
+  });
+
+  //get product by id
+  app.get("/products/:id", (req, res) => {
+    const productId = +req.params.id;
+    const prods = mongoose.model("products", productsSchema);
+    let productInfo;
+
+    prods.findById(productId, function (err, productInfo) {
+      if (err) return console.error(err);
+      res.send(productInfo);
+    });
+  });
+
+  // add new product + upload image
+  app.post("/products", (req, res) => {
+    var dir = imageDir;
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir);
+    }
+
+    upload(req, res, (err) => {
+      if (err) {
+        res.status(400).send("Something went wrong!");
+      }
+
+      let imgFileName;
+
+      if (req.file) {
+        imgFileName = `${imageDir}/${req.file.filename}`;
+      } else {
+        imgFileName = noImage;
+      }
+
+      const prods = mongoose.model("products", productsSchema);
+      let prodMaxId;
+
+      prods
+        .find()
+        .sort({ _id: -1 })
+        .select({ _id: true })
+        .limit(1)
+        .then(function (result) {
+          prodMaxId = result.length === 0 ? 1 : +result[0]._id + 1;
+
+          const newProd = new prods({
+            _id: prodMaxId,
+            title: req.body.title,
+            image: imgFileName,
+            quantity: +req.body.quantity,
+            price: +req.body.price,
+            description: req.body.description,
+          });
+          newProd.save();
+          res.send("Add product method completed");
+        });
+    });
+  });
+
+  //delete product by id + delete server image
+  app.delete("/products/:id", (req, res) => {
+    const productId = +req.params.id;
+
+    console.log("delete by id", productId);
+    const prods = mongoose.model("products", productsSchema);
+    let productInfo;
+
+    prods.findById(productId, function (err, productInfo) {
+      if (err) return console.error(err);
+      console.log("product", productInfo);
+
+      const imgFileName = productInfo.image;
+      console.log("imgFileName", imgFileName);
+
+      //delete image file
+      console.log(`deleting local image (${imgFileName})`);
+      if (!imgFileName.endsWith(noImage)) {
+        fs.unlink(imgFileName, (err) => {
+          if (err) {
+            console.log(`failed to delete local image:${err}`);
+          }
+        });
+      }
+
+      //delete product
+      productInfo.remove();
+
+      res.send(`product id ${productId} has been deleted`);
+    });
+  });
+
+  //update product quantity
+  app.put("/products/updateQuantity/:id", (req, res) => {
+    const productId = +req.params.id;
+    const prods = mongoose.model("products", productsSchema);
+    let productInfo;
+
+    prods.findByIdAndUpdate(
+      productId,
+      { quantity: +req.body.quantity },
+      function (err, productInfo) {
+        console.log("productInfo", productInfo);
+        if (productInfo) {
+          if (err) return console.error(err);
+          io.emit(
+            "getProductQuantityToUpdate",
+            productInfo.id,
+            +req.body.quantity
+          );
+          res.send("Update product quantity method completed");
+        } else
+          res.send(
+            `Update product quantity method FAILED - product id ${productId} not found!`
+          );
+      }
+    );
+  });
+
+  //update product info
+  app.put("/products/:id", (req, res) => {
+    const productId = +req.params.id;
+    const prods = mongoose.model("products", productsSchema);
+    let productInfo;
+
+    upload(req, res, (err) => {
+      if (err) {
+        res.status(400).send("Something went wrong!");
+      }
+
+      let updateQuery = { _id: productId };
+      let updateValues = { $set: {} };
+
+      if (req.file) {
+        // if (!productInfo.image.endsWith(noImage)) {
+        //   fs.unlink(productInfo.image, (err) => {
+        //     if (err) {
+        //       console.log(`failed to delete local image:${err}`);
+        //     }
+        //     //else {
+        //     //   console.log(`successfully deleted local image`);
+        //     // }
+        //   });
+        // }
+        updateValues.$set["image"] = `${imageDir}/${req.file.filename}`;
+      }
+
+      if (req.body.title) updateValues.$set["title"] = req.body.title;
+      if (req.body.price) updateValues.$set["price"] = +req.body.price;
+      if (req.body.quantity) updateValues.$set["quantity"] = +req.body.quantity;
+      if (req.body.description)
+        updateValues.$set["description"] = req.body.description;
+
+      console.log("updateValues", updateValues);
+
+      prods.update(updateQuery, updateValues, function (err, productInfo) {
+        console.log("productInfo", productInfo);
+        if (productInfo) {
+          if (err) return console.error(err);
+
+          res.send("Update product method completed");
+        } else res.send(`Update product method FAILED - product id ${productId} not found!`);
+      });
+    });
+  });
 });
